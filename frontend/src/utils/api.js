@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const BASE = '/api'
+// In production (Vercel), VITE_API_URL points to the Render backend.
+// In local dev, '/api' is proxied by Vite to localhost:5000.
+const BASE = import.meta.env.VITE_API_URL || '/api'
 
 export const uploadFile = (file) => {
   const fd = new FormData()
