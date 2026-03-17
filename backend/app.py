@@ -12,6 +12,7 @@ from flask_cors import CORS
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
@@ -299,10 +300,17 @@ def train(uid):
     y = df[TARGET]
     STORE[uid]["feature_cols"] = list(X.columns)
 
-    # SMOTE + split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # Split: 60% train, 20% calibration, 20% test
+    X_train_full, X_test, y_train_full, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    X_train, X_cal, y_train, y_cal = train_test_split(
+        X_train_full, y_train_full, test_size=0.25, random_state=42, stratify=y_train_full
+    )
+
+    # SMOTE on train only
     try:
-        sm = SMOTE(random_state=42, k_neighbors=min(5, y_train.sum() - 1))
+        sm = SMOTE(random_state=42, k_neighbors=min(5, int(y_train.sum()) - 1))
         X_train_sm, y_train_sm = sm.fit_resample(X_train, y_train)
     except Exception:
         X_train_sm, y_train_sm = X_train, y_train
@@ -311,7 +319,8 @@ def train(uid):
     STORE[uid]["y_test"] = y_test
 
     results = {}
-    models = {}
+    raw_models = {}
+    calibrated_models = {}
 
     # ── Random Forest ──
     rf_params = {
@@ -323,7 +332,7 @@ def train(uid):
     rf = RandomForestClassifier(random_state=42, n_jobs=-1)
     rf_cv = RandomizedSearchCV(rf, rf_params, n_iter=10, cv=3, scoring="f1", random_state=42, n_jobs=-1)
     rf_cv.fit(X_train_sm, y_train_sm)
-    models["Random Forest"] = rf_cv.best_estimator_
+    raw_models["Random Forest"] = rf_cv.best_estimator_
 
     # ── XGBoost ──
     xgb_params = {
@@ -337,19 +346,28 @@ def train(uid):
     xgb = XGBClassifier(random_state=42, eval_metric="logloss", scale_pos_weight=scale_pos)
     xgb_cv = RandomizedSearchCV(xgb, xgb_params, n_iter=10, cv=3, scoring="f1", random_state=42, n_jobs=-1)
     xgb_cv.fit(X_train_sm, y_train_sm)
-    models["XGBoost"] = xgb_cv.best_estimator_
+    raw_models["XGBoost"] = xgb_cv.best_estimator_
 
     # ── Logistic Regression ──
     lr_params = {"C": [0.001, 0.01, 0.1, 1, 10, 100], "penalty": ["l2"], "solver": ["lbfgs"]}
     lr = LogisticRegression(random_state=42, max_iter=1000)
     lr_cv = RandomizedSearchCV(lr, lr_params, n_iter=6, cv=3, scoring="f1", random_state=42)
     lr_cv.fit(X_train_sm, y_train_sm)
-    models["Logistic Regression"] = lr_cv.best_estimator_
+    raw_models["Logistic Regression"] = lr_cv.best_estimator_
 
-    # ── Evaluate ──
+    # ── Calibrate all models on the calibration set ──
+    for name, mdl in raw_models.items():
+        try:
+            cal = CalibratedClassifierCV(mdl, method="sigmoid", cv="prefit")
+            cal.fit(X_cal, y_cal)
+            calibrated_models[name] = cal
+        except Exception:
+            calibrated_models[name] = mdl  # fallback to raw if calibration fails
+
+    # ── Evaluate using CALIBRATED models ──
     best_name = None
     best_auc = -1
-    for name, mdl in models.items():
+    for name, mdl in calibrated_models.items():
         y_pred = mdl.predict(X_test)
         y_prob = mdl.predict_proba(X_test)[:, 1]
         acc = float(accuracy_score(y_test, y_pred))
@@ -372,17 +390,17 @@ def train(uid):
             best_auc = auc
             best_name = name
 
-    STORE[uid]["model_cache"] = models
-    STORE[uid]["best_model"] = models[best_name]
+    STORE[uid]["model_cache"] = calibrated_models
+    STORE[uid]["best_model"] = calibrated_models[best_name]
     STORE[uid]["best_model_name"] = best_name
 
-    # Build SHAP explainer for best model
+    # Build SHAP explainer for best RAW model (SHAP needs the raw estimator)
     try:
-        best_mdl = models[best_name]
+        raw_best = raw_models[best_name]
         if best_name == "Logistic Regression":
-            explainer = shap.LinearExplainer(best_mdl, X_train_sm, feature_names=list(X.columns))
+            explainer = shap.LinearExplainer(raw_best, X_train_sm, feature_names=list(X.columns))
         else:
-            explainer = shap.TreeExplainer(best_mdl)
+            explainer = shap.TreeExplainer(raw_best)
         shap_vals = explainer.shap_values(X_test)
         # For binary classifiers shap_vals may be list [neg, pos]
         if isinstance(shap_vals, list) and len(shap_vals) == 2:
