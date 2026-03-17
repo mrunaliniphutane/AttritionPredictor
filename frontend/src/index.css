@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background-color: #0F1A2E;
+    color: #E2E8F0;
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0F1A2E;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2A3F6A;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #D4A843;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card rounded-2xl border border-border p-5 shadow-xl;
+  }
+  .card-hover {
+    @apply card transition-all duration-300 hover:border-gold hover:shadow-gold hover:shadow-sm hover:-translate-y-0.5;
+  }
+  .btn-gold {
+    @apply bg-gold text-bg font-semibold px-6 py-2.5 rounded-xl transition-all duration-200 hover:bg-gold-light active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-outline {
+    @apply border border-border text-muted font-medium px-5 py-2 rounded-xl transition-all duration-200 hover:border-gold hover:text-gold;
+  }
+  .metric-card {
+    @apply card flex flex-col gap-1;
+  }
+  .metric-label {
+    @apply text-xs font-medium text-muted uppercase tracking-wider;
+  }
+  .metric-value {
+    @apply text-2xl font-bold text-white;
+  }
+  .tab-btn {
+    @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap;
+  }
+  .tab-active {
+    @apply bg-gold text-bg shadow-lg;
+  }
+  .tab-inactive {
+    @apply text-muted hover:text-white hover:bg-border;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-low {
+    @apply bg-success/20 text-success;
+  }
+  .badge-medium {
+    @apply bg-warning/20 text-warning;
+  }
+  .badge-high {
+    @apply bg-orange-500/20 text-orange-400;
+  }
+  .badge-critical {
+    @apply bg-danger/20 text-danger;
+  }
+  .input-field {
+    @apply w-full bg-card-dark border border-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors;
+  }
+  .select-field {
+    @apply input-field cursor-pointer;
+  }
+  .section-title {
+    @apply text-lg font-semibold text-white mb-4 flex items-center gap-2;
+  }
+  .skeleton {
+    @apply animate-pulse bg-border rounded-xl;
+  }
+}
+
+/* Recharts custom overrides */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #1B2A4A !important;
+  border: 1px solid #2A3F6A !important;
+  border-radius: 12px !important;
+  color: #E2E8F0 !important;
+}
+.recharts-legend-wrapper {
+  font-size: 12px;
+}
+.recharts-cartesian-grid line {
+  stroke: #2A3F6A;
+}
+.recharts-text {
+  fill: #8899BB;
+  font-size: 11px;
+}
+
+/* Gauge animation */
+@keyframes gaugeAnim {
+  from { stroke-dashoffset: 283; }
+}
+.gauge-arc {
+  animation: gaugeAnim 1s ease-out forwards;
+}
+
+/* Shimmer effect */
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #1B2A4A 25%, #2A3F6A 50%, #1B2A4A 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #D4A843 0%, #E8C068 50%, #F5D78A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Table striping */
+.data-table tr:nth-child(even) {
+  background: rgba(26, 40, 72, 0.4);
+}
+.data-table tr:hover {
+  background: rgba(212, 168, 67, 0.08);
+}
