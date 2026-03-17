@@ -26,6 +26,9 @@ export const predictEmployee = (id, data) =>
 export const fetchRiskScoring = (id) =>
   axios.get(`${BASE}/risk/${id}`).then(r => r.data)
 
+export const fetchMetadata = (id) =>
+  axios.get(`${BASE}/metadata/${id}`).then(r => r.data)
+
 export const fetchDashboard = (id, depts = []) => {
   const q = depts.length ? `?depts=${depts.join(',')}` : ''
   return axios.get(`${BASE}/dashboard/${id}${q}`).then(r => r.data)

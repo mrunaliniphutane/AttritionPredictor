@@ -131,6 +131,15 @@ def upload():
             dept_counts = {str(k): int(v) for k, v in dept_counts.items()}
             break
 
+    # Store the raw column info for metadata
+    cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = [c for c in cat_cols if c != TARGET]
+    num_cols = [c for c in num_cols if c != TARGET]
+
+    STORE[uid]["raw_cat_cols"] = cat_cols
+    STORE[uid]["raw_num_cols"] = num_cols
+
     return safe_json({
         "id": uid,
         "rows": len(df),
@@ -139,6 +148,51 @@ def upload():
         "attrition_split": attrition_split,
         "dept_counts": dept_counts,
     })
+
+
+# ─── Metadata (for dynamic What-If form) ────────────────────────────────────
+
+@app.route("/api/metadata/<uid>", methods=["GET"])
+def metadata(uid):
+    if uid not in STORE:
+        return jsonify({"error": "Dataset not found"}), 404
+    df = STORE[uid]["df_raw"]
+    feature_cols = STORE[uid].get("feature_cols", [])
+    encoders = STORE[uid].get("encoders", {})
+    df_encoded = STORE[uid].get("df_encoded")
+
+    fields = []
+    for col in feature_cols:
+        if col in encoders:
+            # Categorical column — get original labels
+            le = encoders[col]
+            labels = list(le.classes_)
+            fields.append({
+                "name": col,
+                "type": "categorical",
+                "options": [str(l) for l in labels],
+                "default": str(labels[0]) if labels else "",
+            })
+        else:
+            # Numeric column — get stats from encoded data
+            if df_encoded is not None and col in df_encoded.columns:
+                col_data = df_encoded[col].dropna()
+                fields.append({
+                    "name": col,
+                    "type": "numeric",
+                    "min": float(col_data.min()),
+                    "max": float(col_data.max()),
+                    "median": float(col_data.median()),
+                    "mean": round(float(col_data.mean()), 2),
+                    "step": 1 if col_data.dtype in [np.int64, np.int32] else 0.1,
+                })
+            else:
+                fields.append({
+                    "name": col,
+                    "type": "numeric",
+                    "min": 0, "max": 100, "median": 50, "mean": 50, "step": 1,
+                })
+    return safe_json({"fields": fields})
 
 
 # ─── EDA ─────────────────────────────────────────────────────────────────────
@@ -279,7 +333,7 @@ def train(uid):
         "subsample": [0.6, 0.8, 1.0],
         "colsample_bytree": [0.6, 0.8, 1.0],
     }
-    scale_pos = float(y_train_sm.value_counts()[0] / max(y_train_sm.value_counts()[1], 1))
+    scale_pos = float(y_train.value_counts()[0] / max(y_train.value_counts()[1], 1))
     xgb = XGBClassifier(random_state=42, eval_metric="logloss", scale_pos_weight=scale_pos)
     xgb_cv = RandomizedSearchCV(xgb, xgb_params, n_iter=10, cv=3, scoring="f1", random_state=42, n_jobs=-1)
     xgb_cv.fit(X_train_sm, y_train_sm)
@@ -474,7 +528,11 @@ def predict(uid):
                 try:
                     val = int(le.transform([str(val)])[0])
                 except Exception:
-                    val = 0
+                    # Unseen category: use the mode (most frequent) from training data
+                    if df_encoded is not None and col in df_encoded.columns:
+                        val = int(df_encoded[col].mode().iloc[0])
+                    else:
+                        val = 0
             else:
                 try:
                     val = float(val)
